@@ -129,11 +129,16 @@ router.put("/:id/approve", authenticate, authorizePermission("proposal:approve")
   const proposal = proposals.find((p) => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ message: "Proposal not found" });
   if (proposal.status !== "active") return res.status(400).json({ message: "Already processed" });
+  const steps = proposal.type === "heavy" ? heavySteps : financialSteps;
+  const stepLabel = steps[proposal.step];
+  const requiredRole = stepLabel === "Super Admin" ? "admin" : stepLabel.toLowerCase();
+  if (req.user!.role.toLowerCase() !== requiredRole && req.user!.role !== "admin") {
+    return res.status(403).json({ message: `Only ${stepLabel} role can approve at this step` });
+  }
   const maxStep = proposal.type === "heavy" ? 6 : 3;
   proposal.step++;
   if (proposal.step >= maxStep) proposal.status = "approved";
   proposal.updatedAt = new Date().toISOString();
-  const steps = proposal.type === "heavy" ? heavySteps : financialSteps;
   dbRun("UPDATE proposals SET step=?, status=?, updatedAt=? WHERE id=?", [proposal.step, proposal.status, proposal.updatedAt, proposal.id]);
   createAuditLog(req.user!.userId, req.user!.email, "update", "proposal", proposal.id, `Approved ${steps[proposal.step - 1] || ""}: ${proposal.proposalCode}`);
   createNotification(proposal.userId, "Proposal Disetujui", `Proposal ${proposal.proposalCode} telah disetujui oleh ${req.user!.email}`, "success", `/dashboard/proposals/${proposal.id}`);
