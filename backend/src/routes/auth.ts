@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import { User, Role } from "../types";
-import { generateToken, users, roles, authenticate } from "../middleware/auth";
+import { generateToken, users, roles, authenticate, persistUser } from "../middleware/auth";
 import { createAuditLog } from "../middleware/audit";
 
 const router = Router();
@@ -48,6 +48,7 @@ router.post("/register", async (req: Request, res: Response) => {
     updatedAt: new Date().toISOString(),
   };
   users.push(user);
+  persistUser(user);
   const token = generateToken({ userId: user.id, email: user.email, role: user.role, roleId: user.roleId });
   createAuditLog(user.id, user.email, "register", "auth", user.id, "Registrasi akun baru");
   return res.status(201).json({ token, user: formatUserResponse(user) });
@@ -107,6 +108,7 @@ router.post("/google", async (req: Request, res: Response) => {
         updatedAt: new Date().toISOString(),
       };
       users.push(user);
+      persistUser(user);
     }
     const token = generateToken({ userId: user.id, email: user.email, role: user.role, roleId: user.roleId });
     console.log(`[SSO Login] ${user.email} → Token: ${token}`);

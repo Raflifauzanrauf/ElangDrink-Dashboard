@@ -3,6 +3,7 @@ import { authenticate, authorizePermission, users } from "../middleware/auth";
 import { createAuditLog } from "../middleware/audit";
 import { createNotification } from "./notifications";
 import { Proposal } from "../types";
+import { dbRun, getDb } from "../db";
 import { parsePagination, paginateResult, applySorting, applyPagination, filterBySearch } from "../utils/query";
 import multer from "multer";
 import path from "path";
@@ -34,8 +35,28 @@ const router = Router();
 export const proposals: Proposal[] = [];
 let proposalCounter = 0;
 
-const stepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance"];
-const maxStep = 5;
+const financialSteps = ["Created", "Submitted", "SPV"];
+const heavySteps = ["Created", "Submitted", "SPV", "Manager", "Finance", "Super Admin"];
+
+export function loadProposalsFromDb(): void {
+  proposals.length = 0;
+  try {
+    const db = getDb();
+    const rows = db.exec("SELECT id, userId, userEmail, proposalCode, date, division, currency, totalAmount, description, pdfFile, type, step, status, createdAt, updatedAt FROM proposals");
+    if (rows.length > 0) {
+      rows[0].values.forEach((r: any) => {
+        proposals.push({
+          id: r[0], userId: r[1], userEmail: r[2], proposalCode: r[3], date: r[4],
+          division: r[5], currency: r[6], totalAmount: r[7], description: r[8],
+          pdfFile: r[9], type: r[10], step: r[11], status: r[12],
+          createdAt: r[13], updatedAt: r[14],
+        });
+        const num = parseInt(r[3].replace("CC-", ""), 10);
+        if (!isNaN(num) && num > proposalCounter) proposalCounter = num;
+      });
+    }
+  } catch {}
+}
 
 function generateProposalCode(): string {
   proposalCounter++;
@@ -71,10 +92,11 @@ router.get("/:id", authenticate, authorizePermission("proposal:read"), (req: Req
 });
 
 router.post("/", authenticate, authorizePermission("proposal:create"), upload.single("pdfFile"), (req: Request, res: Response) => {
-  const { division, currency, totalAmount, description } = req.body;
+  const { division, currency, totalAmount, description, type } = req.body;
   if (!division || !currency || !totalAmount) {
     return res.status(400).json({ message: "Division, currency, and total amount are required" });
   }
+  const proposalType = type === "heavy" ? "heavy" : "financial";
   const proposal: Proposal = {
     id: String(Date.now()),
     userId: req.user!.userId,
@@ -86,16 +108,19 @@ router.post("/", authenticate, authorizePermission("proposal:create"), upload.si
     totalAmount: parseFloat(totalAmount) || 0,
     description: description || "",
     pdfFile: req.file ? req.file.filename : "",
+    type: proposalType,
     step: 2,
     status: "active",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
   proposals.push(proposal);
+  dbRun("INSERT INTO proposals (id, userId, userEmail, proposalCode, date, division, currency, totalAmount, description, pdfFile, type, step, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [proposal.id, proposal.userId, proposal.userEmail, proposal.proposalCode, proposal.date, proposal.division, proposal.currency, proposal.totalAmount, proposal.description, proposal.pdfFile, proposal.type, proposal.step, proposal.status, proposal.createdAt, proposal.updatedAt]);
   createAuditLog(req.user!.userId, req.user!.email, "create", "proposal", proposal.id, `Membuat proposal: ${proposal.proposalCode}`);
   const adminUsers = users.filter((u) => u.role === "admin");
   adminUsers.forEach((admin) => {
-    createNotification(admin.id, "Proposal Baru", `${req.user!.email} membuat proposal ${proposal.proposalCode}`, "info", `/dashboard/proposals/${proposal.id}`);
+    createNotification(admin.id, "Proposal Baru", `${req.user!.email} membuat proposal ${proposal.proposalCode} (${proposalType === "heavy" ? "Pengajuan Berat" : "Pengajuan Keuangan"})`, "info", `/dashboard/proposals/${proposal.id}`);
   });
   return res.status(201).json(proposal);
 });
@@ -104,10 +129,13 @@ router.put("/:id/approve", authenticate, authorizePermission("proposal:approve")
   const proposal = proposals.find((p) => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ message: "Proposal not found" });
   if (proposal.status !== "active") return res.status(400).json({ message: "Already processed" });
+  const maxStep = proposal.type === "heavy" ? 6 : 3;
   proposal.step++;
   if (proposal.step >= maxStep) proposal.status = "approved";
   proposal.updatedAt = new Date().toISOString();
-  createAuditLog(req.user!.userId, req.user!.email, "update", "proposal", proposal.id, `Approved ${stepLabels[proposal.step - 1] || ""}: ${proposal.proposalCode}`);
+  const steps = proposal.type === "heavy" ? heavySteps : financialSteps;
+  dbRun("UPDATE proposals SET step=?, status=?, updatedAt=? WHERE id=?", [proposal.step, proposal.status, proposal.updatedAt, proposal.id]);
+  createAuditLog(req.user!.userId, req.user!.email, "update", "proposal", proposal.id, `Approved ${steps[proposal.step - 1] || ""}: ${proposal.proposalCode}`);
   createNotification(proposal.userId, "Proposal Disetujui", `Proposal ${proposal.proposalCode} telah disetujui oleh ${req.user!.email}`, "success", `/dashboard/proposals/${proposal.id}`);
   return res.json(proposal);
 });
@@ -118,6 +146,7 @@ router.put("/:id/reject", authenticate, authorizePermission("proposal:approve"),
   if (proposal.status !== "active") return res.status(400).json({ message: "Already processed" });
   proposal.status = "rejected";
   proposal.updatedAt = new Date().toISOString();
+  dbRun("UPDATE proposals SET status=?, updatedAt=? WHERE id=?", [proposal.status, proposal.updatedAt, proposal.id]);
   createAuditLog(req.user!.userId, req.user!.email, "update", "proposal", proposal.id, `Rejected: ${proposal.proposalCode}`);
   createNotification(proposal.userId, "Proposal Ditolak", `Proposal ${proposal.proposalCode} telah ditolak oleh ${req.user!.email}`, "error", `/dashboard/proposals/${proposal.id}`);
   return res.json(proposal);
@@ -135,6 +164,7 @@ router.delete("/:id", authenticate, authorizePermission("proposal:delete"), (req
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
   proposals.splice(idx, 1);
+  dbRun("DELETE FROM proposals WHERE id = ?", [req.params.id]);
   createAuditLog(req.user!.userId, req.user!.email, "delete", "proposal", req.params.id as string, `Deleted: ${proposal.proposalCode}`);
   return res.json({ message: "Proposal deleted" });
 });

@@ -5,12 +5,30 @@ import { Currency } from "../types";
 import { parsePagination, paginateResult, applySorting, applyPagination, filterBySearch } from "../utils/query";
 import { generateCsv, parseCsv, CsvColumn } from "../utils/csv";
 import { toWib } from "../utils/format";
+import { dbRun, getDb } from "../db";
 import multer from "multer";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 export const currencies: Currency[] = [];
+
+export function loadCurrenciesFromDb(): void {
+  currencies.length = 0;
+  try {
+    const db = getDb();
+    const rows = db.exec("SELECT id, code, name, symbol, exchangeRate, isBase, createdAt, updatedAt FROM currencies");
+    if (rows.length > 0) {
+      rows[0].values.forEach((r: any) => {
+        currencies.push({
+          id: r[0], code: r[1], name: r[2], symbol: r[3],
+          exchangeRate: r[4], isBase: r[5] === 1,
+          createdAt: r[6], updatedAt: r[7],
+        });
+      });
+    }
+  } catch {}
+}
 
 const csvColumns: CsvColumn[] = [
   { key: "id", label: "ID" },
@@ -78,9 +96,10 @@ router.post("/import/csv", authenticate, authorizePermission("currency:create"),
       if (row.exchangerate) existing.exchangeRate = parseFloat(row.exchangerate) || existing.exchangeRate;
       if (row.isbase !== undefined) existing.isBase = row.isbase === "true" || row.isbase === "1";
       existing.updatedAt = new Date().toISOString();
+      dbRun("UPDATE currencies SET name=?, symbol=?, exchangeRate=?, isBase=?, updatedAt=? WHERE code=?", [existing.name, existing.symbol, existing.exchangeRate, existing.isBase ? 1 : 0, existing.updatedAt, existing.code]);
       updated++;
     } else {
-      currencies.push({
+      const newCurrency = {
         id: String(Date.now()) + String(idx),
         code,
         name,
@@ -89,7 +108,9 @@ router.post("/import/csv", authenticate, authorizePermission("currency:create"),
         isBase: (row.isbase === "true" || row.isbase === "1"),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      currencies.push(newCurrency);
+      dbRun("INSERT INTO currencies (id, code, name, symbol, exchangeRate, isBase, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [newCurrency.id, newCurrency.code, newCurrency.name, newCurrency.symbol, newCurrency.exchangeRate, newCurrency.isBase ? 1 : 0, newCurrency.createdAt, newCurrency.updatedAt]);
       imported++;
     }
   });
@@ -114,6 +135,7 @@ router.post("/", authenticate, authorizePermission("currency:create"), auditMidd
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   currencies.push(currency);
+  dbRun("INSERT INTO currencies (id, code, name, symbol, exchangeRate, isBase, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [currency.id, currency.code, currency.name, currency.symbol, currency.exchangeRate, currency.isBase ? 1 : 0, currency.createdAt, currency.updatedAt]);
   return res.status(201).json(currency);
 });
 
@@ -127,12 +149,14 @@ router.put("/:id", authenticate, authorizePermission("currency:update"), auditMi
   if (exchangeRate !== undefined) currency.exchangeRate = exchangeRate;
   if (isBase !== undefined) currency.isBase = isBase;
   currency.updatedAt = new Date().toISOString();
+  dbRun("UPDATE currencies SET code=?, name=?, symbol=?, exchangeRate=?, isBase=?, updatedAt=? WHERE id=?", [currency.code, currency.name, currency.symbol, currency.exchangeRate, currency.isBase ? 1 : 0, currency.updatedAt, currency.id]);
   return res.json(currency);
 });
 
 router.delete("/:id", authenticate, authorizePermission("currency:delete"), auditMiddleware("delete", "currency"), (req: Request, res: Response) => {
   const idx = currencies.findIndex((c) => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Currency not found" });
+  dbRun("DELETE FROM currencies WHERE id = ?", [req.params.id]);
   currencies.splice(idx, 1);
   return res.json({ message: "Currency deleted" });
 });

@@ -19,6 +19,7 @@ interface Proposal {
   totalAmount: number;
   description: string;
   pdfFile: string;
+  type: "financial" | "heavy";
   step: number;
   status: "active" | "approved" | "rejected";
   createdAt: string;
@@ -27,14 +28,20 @@ interface Proposal {
 const API_URL = "http://localhost:4000/api";
 
 const stepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance"];
+const heavyStepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance", "Super Admin"];
 
-function StepProgress({ step, status }: { step: number; status: string }) {
+function getStepLabels(type?: string) {
+  return type === "heavy" ? heavyStepLabels : stepLabels;
+}
+
+function StepProgress({ step, status, type }: { step: number; status: string; type?: string }) {
+  const labels = getStepLabels(type);
   const isComplete = (idx: number) => idx < step || status === "approved";
   const isActive = (idx: number) => idx === step && status === "active";
 
   return (
     <div className="flex items-center justify-center py-6">
-      {stepLabels.map((label, i) => (
+      {labels.map((label, i) => (
         <div key={label} className="flex items-center">
           <div className="flex flex-col items-center gap-1.5">
             <div
@@ -64,7 +71,7 @@ function StepProgress({ step, status }: { step: number; status: string }) {
               {status === "rejected" && i === step ? "Rejected" : label}
             </span>
           </div>
-          {i < stepLabels.length - 1 && (
+          {i < labels.length - 1 && (
             <div
               className="h-px mx-3"
               style={{
@@ -181,16 +188,20 @@ export default function ProposalDetailPage() {
                   : "bg-yellow-500/10 text-yellow-400"
               }`}
             >
-              {proposal.status === "active" ? `${stepLabels[proposal.step]} — Active` : proposal.status}
+              {proposal.status === "active" ? `${getStepLabels(proposal.type)[proposal.step]} — Active` : proposal.status}
             </span>
           </div>
 
-          <StepProgress step={proposal.step} status={proposal.status} />
+          <StepProgress step={proposal.step} status={proposal.status} type={proposal.type} />
 
           <div className="grid grid-cols-2 gap-4 mt-6 text-sm">
             <div>
               <span className="text-muted-foreground">Date</span>
               <p className="font-medium">{proposal.date}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Type</span>
+              <p className="font-medium">{proposal.type === "heavy" ? "Heavy (Pengajuan Berat)" : "Financial (Pengajuan Keuangan)"}</p>
             </div>
             <div>
               <span className="text-muted-foreground">Division</span>

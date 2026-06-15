@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import { authenticate, authorize, users, roles } from "../middleware/auth";
+import { authenticate, authorize, users, roles, persistUser, removeUser } from "../middleware/auth";
 import { auditMiddleware } from "../middleware/audit";
 import { User } from "../types";
 import { parsePagination, paginateResult, applySorting, applyPagination, filterBySearch } from "../utils/query";
@@ -50,6 +50,7 @@ router.post("/", authenticate, authorize("admin"), auditMiddleware("create", "us
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   users.push(user);
+  persistUser(user);
   return res.status(201).json(toSafeUser(user));
 });
 
@@ -67,6 +68,7 @@ router.put("/:id", authenticate, authorize("admin"), auditMiddleware("update", "
   }
   if (password) user.password = await bcrypt.hash(password, 10);
   user.updatedAt = new Date().toISOString();
+  persistUser(user);
   return res.json(toSafeUser(user));
 });
 
@@ -74,6 +76,7 @@ router.delete("/:id", authenticate, authorize("admin"), auditMiddleware("delete"
   const idx = users.findIndex((u) => u.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "User not found" });
   if (users[idx].id === req.user?.userId) return res.status(400).json({ message: "Cannot delete yourself" });
+  removeUser(users[idx].id);
   users.splice(idx, 1);
   return res.json({ message: "User deleted" });
 });

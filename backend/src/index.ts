@@ -2,16 +2,17 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { initDb } from "./db";
 import { seedPermissions, seedRoles, seedAdmin } from "./middleware/auth";
 import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
 import rolesRoutes from "./routes/roles";
 import permissionsRoutes from "./routes/permissions";
-import currenciesRoutes from "./routes/currencies";
+import currenciesRoutes, { loadCurrenciesFromDb } from "./routes/currencies";
 import auditLogsRoutes from "./routes/auditLogs";
-import proposalsRoutes from "./routes/proposals";
+import proposalsRoutes, { loadProposalsFromDb } from "./routes/proposals";
 import dashboardRoutes from "./routes/dashboard";
-import notificationsRoutes from "./routes/notifications";
+import notificationsRoutes, { loadNotificationsFromDb } from "./routes/notifications";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -30,10 +31,16 @@ app.use("/api/proposals", proposalsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/notifications", notificationsRoutes);
 
-seedPermissions();
-seedRoles();
-seedAdmin().then(() => {
+const start = async () => {
+  await initDb();
+  seedPermissions();
+  seedRoles();
+  await seedAdmin();
+  loadCurrenciesFromDb();
+  loadProposalsFromDb();
+  loadNotificationsFromDb();
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
-});
+};
+start();

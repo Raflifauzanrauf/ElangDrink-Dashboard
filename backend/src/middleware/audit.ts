@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { AuditLog } from "../types";
 import { describeAction } from "../utils/format";
+import { getDb, saveDb } from "../db";
 
 export const auditLogs: AuditLog[] = [];
 
@@ -17,6 +18,12 @@ export const createAuditLog = (userId: string, userEmail: string, action: string
     timestamp: new Date().toISOString(),
   };
   auditLogs.push(log);
+  try {
+    const db = getDb();
+    db.run("INSERT INTO audit_logs (id, userId, userEmail, action, module, resourceId, details, ip, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [log.id, log.userId, log.userEmail, log.action, log.module, log.resourceId, log.details, log.ip, log.timestamp]);
+    saveDb();
+  } catch { /* silent */ }
   console.log(`[Audit] ${userEmail} → ${describeAction(action, module, details)}${resourceId ? ` (${resourceId})` : ""}`);
   return log;
 };

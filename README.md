@@ -5,14 +5,16 @@ Admin dashboard for ElangDrink with RBAC, proposal approval workflow, and multi-
 ## Tech Stack
 
 - **Frontend**: Next.js 15 (React 19) + Tailwind CSS v3 + shadcn/ui
-- **Backend**: Express.js 4 + TypeScript
+- **Backend**: Express.js 4 + TypeScript + SQLite (sql.js)
 - **Auth**: JWT + Google OAuth
 - **UI**: Dark theme (#121212), Poppins font, recharts
 
 ## Features
 
 - Role-Based Access Control (admin, manager, editor, viewer + custom roles)
-- Proposal management with 5-step approval workflow (Created → Submitted → SPV → Manager → Finance)
+- Proposal management with type-based approval workflow
+  - **Financial** (Pengajuan Keuangan): approval up to SPV
+  - **Heavy** (Pengajuan Berat): approval up to Super Admin
 - Multi-currency management with exchange rates
 - User & role management with granular permissions
 - Audit logging with search, filter, and CSV export
@@ -72,6 +74,11 @@ npm run dev:frontend  # Next.js on :3000
 - Email: `admin@admin.com`
 - Password: `admin123`
 
+## Database
+
+Data is stored in SQLite (`backend/data/elangdrink.db`) — persistent across restarts.  
+To reset all data, delete the `.db` file and restart the server.
+
 ## Testing
 
 ```bash
@@ -84,6 +91,7 @@ npm run test -w backend
 ├── backend/
 │   └── src/
 │       ├── index.ts              # Express entry point
+│       ├── db.ts                 # SQLite database layer
 │       ├── types.ts              # TypeScript interfaces
 │       ├── middleware/
 │       │   ├── auth.ts           # JWT, RBAC middleware, seed data
@@ -114,5 +122,3 @@ npm run test -w backend
 | GET    | /api/audit-logs      | Audit trail            |
 | GET    | /api/dashboard       | Dashboard stats        |
 | CRUD   | /api/notifications   | Notifications          |
-
-> Data is stored in-memory and resets on server restart.

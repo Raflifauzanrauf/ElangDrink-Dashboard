@@ -1,7 +1,11 @@
 node_modules/
 .next/
 .env
+.env.local
 backend/uploads/
+backend/data/*.db
 dist/
 *.log
+*.tsbuildinfo
+next-env.d.ts
 .DS_Store

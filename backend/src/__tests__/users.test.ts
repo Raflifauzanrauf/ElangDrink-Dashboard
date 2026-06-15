@@ -1,11 +1,12 @@
 import request from "supertest";
+import express from "express";
 import { createApp, TEST_ADMIN } from "./setup";
 
-let app: ReturnType<typeof createApp>;
+let app: express.Express;
 let adminToken: string;
 
 beforeAll(async () => {
-  app = createApp();
+  app = await createApp();
   const { seedAdmin } = await import("../middleware/auth");
   await seedAdmin();
   const loginRes = await request(app)

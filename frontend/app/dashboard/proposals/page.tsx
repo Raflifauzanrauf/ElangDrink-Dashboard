@@ -22,6 +22,7 @@ interface Proposal {
   totalAmount: number;
   description: string;
   pdfFile: string;
+  type: "financial" | "heavy";
   step: number;
   status: "active" | "approved" | "rejected";
   createdAt: string;
@@ -36,6 +37,11 @@ const statusBadge: Record<string, string> = {
 };
 
 const stepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance"];
+const heavyStepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance", "Super Admin"];
+
+function getStepLabels(type?: string) {
+  return type === "heavy" ? heavyStepLabels : stepLabels;
+}
 
 const divisions = ["Finance", "Marketing", "Operations", "IT", "HR", "Sales", "Production", "R&D"];
 
@@ -46,7 +52,7 @@ export default function ProposalsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ division: "", currency: "", totalAmount: "", description: "" });
+  const [form, setForm] = useState({ division: "", currency: "", totalAmount: "", description: "", type: "financial" });
   const [formError, setFormError] = useState("");
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [search, setSearch] = useState("");
@@ -102,6 +108,7 @@ export default function ProposalsPage() {
     formData.append("currency", form.currency);
     formData.append("totalAmount", form.totalAmount);
     formData.append("description", form.description);
+    formData.append("type", form.type);
     if (pdfFile) formData.append("pdfFile", pdfFile);
     const res = await fetch(`${API_URL}/proposals`, {
       method: "POST",
@@ -115,7 +122,7 @@ export default function ProposalsPage() {
       return;
     }
     const proposal = await res.json();
-    setForm({ division: "", currency: "", totalAmount: "", description: "" });
+    setForm({ division: "", currency: "", totalAmount: "", description: "", type: "financial" });
     setPdfFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     setShowForm(false);
@@ -206,6 +213,16 @@ export default function ProposalsPage() {
                   </Select>
                 </div>
                 <div className="flex flex-col gap-2">
+                  <Label htmlFor="ptype">Proposal Type</Label>
+                  <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="financial">Financial (SPV only)</SelectItem>
+                      <SelectItem value="heavy">Heavy (up to Super Admin)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-2">
                   <Label htmlFor="pamount">Total Amount</Label>
                   <Input id="pamount" type="number" step="0.01" value={form.totalAmount} onChange={(e) => setForm({ ...form, totalAmount: e.target.value })} required />
                 </div>
@@ -242,8 +259,11 @@ export default function ProposalsPage() {
                   <div className="flex items-center gap-2 mb-1">
                     <FileText size={14} className="text-muted-foreground shrink-0" />
                     <h3 className="text-sm font-medium font-mono">{p.proposalCode}</h3>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${p.type === "heavy" ? "bg-purple-500/10 text-purple-400" : "bg-blue-500/10 text-blue-400"}`}>
+                      {p.type === "heavy" ? "Heavy" : "Financial"}
+                    </span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusBadge[p.status] || statusBadge.active}`}>
-                      {p.status === "active" ? `${stepLabels[p.step] || ""} — Active` : p.status}
+                      {p.status === "active" ? `${getStepLabels(p.type)[p.step] || ""} — Active` : p.status}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">

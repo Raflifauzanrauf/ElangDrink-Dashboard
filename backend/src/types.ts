@@ -61,6 +61,7 @@ export interface Proposal {
   totalAmount: number;
   description: string;
   pdfFile: string;
+  type: "financial" | "heavy";
   step: number;
   status: "active" | "approved" | "rejected";
   createdAt: string;
