@@ -132,7 +132,7 @@ router.put("/:id/approve", authenticate, authorizePermission("proposal:approve")
   const steps = proposal.type === "heavy" ? heavySteps : financialSteps;
   const stepLabel = steps[proposal.step];
   const requiredRole = stepLabel === "Super Admin" ? "admin" : stepLabel.toLowerCase();
-  if (req.user!.role.toLowerCase() !== requiredRole && req.user!.role !== "admin") {
+  if (req.user!.role.toLowerCase() !== requiredRole) {
     return res.status(403).json({ message: `Only ${stepLabel} role can approve at this step` });
   }
   const maxStep = proposal.type === "heavy" ? 6 : 3;
