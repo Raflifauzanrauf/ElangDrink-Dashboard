@@ -2,7 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
 import fs from "fs";
 import path from "path";
 
-const DB_PATH = path.join(__dirname, "..", "..", "data", "elangdrink.db");
+const DB_PATH = path.join(__dirname, "..", "data", "elangdrink.db");
 let db: SqlJsDatabase;
 let isMemoryDb = false;
 
