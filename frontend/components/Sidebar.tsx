@@ -32,15 +32,15 @@ interface NavItem {
 const masterDataItems: NavItem[] = [
   { label: "Roles", href: "/dashboard/roles", icon: <UserCog size={18} />, roles: ["admin", "manager"], permissions: ["role:read"] },
   { label: "Permissions", href: "/dashboard/permissions", icon: <Key size={18} />, roles: ["admin", "manager"], permissions: ["permission:read"] },
-  { label: "Currencies", href: "/dashboard/currencies", icon: <DollarSign size={18} />, roles: ["admin", "manager", "editor", "viewer"], permissions: ["currency:read"] },
+  { label: "Currencies", href: "/dashboard/currencies", icon: <DollarSign size={18} />, roles: ["admin", "manager", "editor", "viewer", "spv", "finance"], permissions: ["currency:read"] },
   { label: "Audit Logs", href: "/dashboard/audit-logs", icon: <History size={18} />, roles: ["admin", "manager"], permissions: ["audit:read"] },
 ];
 
 const navItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard size={18} />, roles: ["admin", "manager", "editor", "viewer"] },
-  { label: "Proposals", href: "/dashboard/proposals", icon: <FileText size={18} />, roles: ["admin", "manager", "editor", "viewer"], permissions: ["proposal:read"] },
+  { label: "Dashboard", href: "/dashboard", icon: <LayoutDashboard size={18} />, roles: ["admin", "manager", "editor", "viewer", "spv", "finance"] },
+  { label: "Proposals", href: "/dashboard/proposals", icon: <FileText size={18} />, roles: ["admin", "manager", "editor", "viewer", "spv", "finance"], permissions: ["proposal:read"] },
   { label: "Users", href: "/dashboard/users", icon: <Users size={18} />, roles: ["admin"], permissions: ["user:read"] },
-  { label: "Notifications", href: "/dashboard/notifications", icon: <Bell size={18} />, roles: ["admin", "manager", "editor", "viewer"] },
+  { label: "Notifications", href: "/dashboard/notifications", icon: <Bell size={18} />, roles: ["admin", "manager", "editor", "viewer", "spv", "finance"] },
   { label: "Settings", href: "/dashboard/settings", icon: <Settings size={18} />, roles: ["admin"] },
 ];
 
@@ -49,6 +49,8 @@ const roleBadge: Record<Role, string> = {
   manager: "bg-green-500/20 text-green-400",
   editor: "bg-yellow-500/20 text-yellow-400",
   viewer: "bg-gray-500/20 text-gray-400",
+  spv: "bg-purple-500/20 text-purple-400",
+  finance: "bg-cyan-500/20 text-cyan-400",
 };
 
 function SidebarLink({ item, pathname }: { item: NavItem; pathname: string }) {
@@ -78,7 +80,7 @@ function SidebarLink({ item, pathname }: { item: NavItem; pathname: string }) {
 }
 
 function canSeeItem(item: NavItem, userRole: string, userPerms: string[]): boolean {
-  const predefined: Role[] = ["admin", "manager", "editor", "viewer"];
+  const predefined: Role[] = ["admin", "manager", "editor", "viewer", "spv", "finance"];
   if (predefined.includes(userRole as Role)) {
     return item.roles.includes(userRole as Role);
   }

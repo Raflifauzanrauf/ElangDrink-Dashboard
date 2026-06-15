@@ -27,11 +27,11 @@ interface Proposal {
 
 const API_URL = "http://localhost:4000/api";
 
-const stepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance"];
+const financialStepLabels = ["Created", "Submitted", "SPV"];
 const heavyStepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance", "Super Admin"];
 
 function getStepLabels(type?: string) {
-  return type === "heavy" ? heavyStepLabels : stepLabels;
+  return type === "heavy" ? heavyStepLabels : financialStepLabels;
 }
 
 function StepProgress({ step, status, type }: { step: number; status: string; type?: string }) {

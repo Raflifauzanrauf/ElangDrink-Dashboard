@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { initDb } from "./db";
-import { seedPermissions, seedRoles, seedAdmin } from "./middleware/auth";
+import { seedPermissions, seedRoles, seedAdmin, migrateRoles } from "./middleware/auth";
 import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
 import rolesRoutes from "./routes/roles";
@@ -35,6 +35,7 @@ const start = async () => {
   await initDb();
   seedPermissions();
   seedRoles();
+  migrateRoles();
   await seedAdmin();
   loadCurrenciesFromDb();
   loadProposalsFromDb();

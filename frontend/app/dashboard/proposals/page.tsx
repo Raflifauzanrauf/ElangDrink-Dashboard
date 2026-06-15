@@ -36,11 +36,11 @@ const statusBadge: Record<string, string> = {
   rejected: "text-red-400 bg-red-500/10",
 };
 
-const stepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance"];
+const financialStepLabels = ["Created", "Submitted", "SPV"];
 const heavyStepLabels = ["Created", "Submitted", "SPV", "Manager", "Finance", "Super Admin"];
 
 function getStepLabels(type?: string) {
-  return type === "heavy" ? heavyStepLabels : stepLabels;
+  return type === "heavy" ? heavyStepLabels : financialStepLabels;
 }
 
 const divisions = ["Finance", "Marketing", "Operations", "IT", "HR", "Sales", "Production", "R&D"];

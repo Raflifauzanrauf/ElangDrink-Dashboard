@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { authenticate, authorizePermission, users } from "../middleware/auth";
+import { authenticate, authorizePermission, users, roles } from "../middleware/auth";
 import { createAuditLog } from "../middleware/audit";
 import { createNotification } from "./notifications";
 import { Proposal } from "../types";
@@ -38,6 +38,11 @@ let proposalCounter = 0;
 const financialSteps = ["Created", "Submitted", "SPV"];
 const heavySteps = ["Created", "Submitted", "SPV", "Manager", "Finance", "Super Admin"];
 
+function getLiveRole(userId: string): string {
+  const u = users.find((u) => u.id === userId);
+  return u ? u.role : "";
+}
+
 export function loadProposalsFromDb(): void {
   proposals.length = 0;
   try {
@@ -69,8 +74,11 @@ router.get("/", authenticate, authorizePermission("proposal:read"), (req: Reques
   const stepFilter = req.query.step ? parseInt(req.query.step as string) : -1;
   const statusFilter = (req.query.status as string) || "";
 
+  const liveRole = getLiveRole(req.user!.userId);
+  const userPerms = roles.find((r) => r.id === req.user!.roleId)?.permissions || [];
+  const canSeeAll = liveRole === "admin" || liveRole === "manager" || userPerms.includes("proposal:approve");
   let filtered = [...proposals].reverse();
-  if (req.user!.role !== "admin" && req.user!.role !== "manager") {
+  if (!canSeeAll) {
     filtered = filtered.filter((p) => p.userId === req.user!.userId);
   }
   filtered = filterBySearch(filtered, search, ["proposalCode", "division", "userEmail"]);
@@ -85,7 +93,10 @@ router.get("/", authenticate, authorizePermission("proposal:read"), (req: Reques
 router.get("/:id", authenticate, authorizePermission("proposal:read"), (req: Request, res: Response) => {
   const proposal = proposals.find((p) => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ message: "Proposal not found" });
-  if (req.user!.role !== "admin" && req.user!.role !== "manager" && proposal.userId !== req.user!.userId) {
+  const liveRole = getLiveRole(req.user!.userId);
+  const userPerms = roles.find((r) => r.id === req.user!.roleId)?.permissions || [];
+  const canSeeAll = liveRole === "admin" || liveRole === "manager" || userPerms.includes("proposal:approve");
+  if (!canSeeAll && proposal.userId !== req.user!.userId) {
     return res.status(403).json({ message: "You can only view your own proposals" });
   }
   return res.json(proposal);
@@ -129,10 +140,11 @@ router.put("/:id/approve", authenticate, authorizePermission("proposal:approve")
   const proposal = proposals.find((p) => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ message: "Proposal not found" });
   if (proposal.status !== "active") return res.status(400).json({ message: "Already processed" });
+  const liveRole = getLiveRole(req.user!.userId);
   const steps = proposal.type === "heavy" ? heavySteps : financialSteps;
   const stepLabel = steps[proposal.step];
   const requiredRole = stepLabel === "Super Admin" ? "admin" : stepLabel.toLowerCase();
-  if (req.user!.role.toLowerCase() !== requiredRole) {
+  if (liveRole.toLowerCase() !== requiredRole) {
     return res.status(403).json({ message: `Only ${stepLabel} role can approve at this step` });
   }
   const maxStep = proposal.type === "heavy" ? 6 : 3;
@@ -161,7 +173,8 @@ router.delete("/:id", authenticate, authorizePermission("proposal:delete"), (req
   const idx = proposals.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Proposal not found" });
   const proposal = proposals[idx];
-  if (proposal.userId !== req.user!.userId && req.user!.role !== "admin") {
+  const liveRole = getLiveRole(req.user!.userId);
+  if (proposal.userId !== req.user!.userId && liveRole !== "admin") {
     return res.status(403).json({ message: "Can only delete your own proposals" });
   }
   if (proposal.pdfFile) {

@@ -85,6 +85,8 @@ export const seedRoles = () => {
     { id: "r2", name: "manager", desc: "Manager with limited administrative access", perms: ["user:read", "role:read", "permission:read", "currency:read", "currency:create", "currency:update", "audit:read", "proposal:read", "proposal:create", "proposal:approve"] },
     { id: "r3", name: "editor", desc: "Editor who can view and update currencies and create proposals", perms: ["currency:read", "currency:update", "proposal:read", "proposal:create"] },
     { id: "r4", name: "viewer", desc: "Read-only access, can create proposals", perms: ["currency:read", "proposal:read", "proposal:create"] },
+    { id: "r5", name: "spv", desc: "SPV who can approve proposals at SPV step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
+    { id: "r6", name: "finance", desc: "Finance who can approve proposals at Finance step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
   ];
   const insert = db.prepare("INSERT OR IGNORE INTO roles (id, name, description, permissions, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)");
   roleData.forEach((r) => {
@@ -99,6 +101,27 @@ export const seedRoles = () => {
   saveDb();
   console.log(`Seeded ${roles.length} roles`);
 };
+
+export function migrateRoles(): void {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const newRoles = [
+    { id: "r5", name: "spv", desc: "SPV who can approve proposals at SPV step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
+    { id: "r6", name: "finance", desc: "Finance who can approve proposals at Finance step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
+  ];
+  newRoles.forEach((r) => {
+    const existing = roles.find((role) => role.id === r.id || role.name === r.name);
+    if (!existing) {
+      const permsJson = JSON.stringify(r.perms);
+      db.run("INSERT OR IGNORE INTO roles (id, name, description, permissions, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)", [r.id, r.name, r.desc, permsJson, now, now]);
+      roles.push({
+        id: r.id, name: r.name, description: r.desc,
+        permissions: r.perms, createdAt: now, updatedAt: now,
+      });
+    }
+  });
+  saveDb();
+}
 
 export const seedAdmin = async () => {
   if (!isDbEmpty("users")) { loadFromDb(); return; }
