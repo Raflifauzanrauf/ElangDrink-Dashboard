@@ -23,6 +23,7 @@ export interface User {
   name: string;
   role: Role;
   roleId: string;
+  division: string;
   createdAt: string;
   updatedAt: string;
 }

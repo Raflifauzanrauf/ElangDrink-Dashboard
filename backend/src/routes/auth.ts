@@ -21,13 +21,14 @@ const formatUserResponse = (user: User) => {
     name: user.name,
     role: user.role,
     roleId: user.roleId,
+    division: user.division || "",
     permissions: role ? role.permissions : [],
     createdAt: user.createdAt,
   };
 };
 
 router.post("/register", async (req: Request, res: Response) => {
-  const { email, password, name } = req.body;
+  const { email, password, name, division } = req.body;
   if (!email || !password || !name) {
     return res.status(400).json({ message: "All fields are required" });
   }
@@ -44,6 +45,7 @@ router.post("/register", async (req: Request, res: Response) => {
     name,
     role: "viewer",
     roleId: viewerRole?.id || "r4",
+    division: division || "",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -104,6 +106,7 @@ router.post("/google", async (req: Request, res: Response) => {
         name: payload.name || payload.email.split("@")[0],
         role: "viewer",
         roleId: viewerRole?.id || "r4",
+        division: "",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

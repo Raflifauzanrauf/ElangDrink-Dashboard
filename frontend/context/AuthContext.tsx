@@ -11,6 +11,7 @@ export interface User {
   name: string;
   role: Role;
   roleId: string;
+  division: string;
   permissions: string[];
   createdAt: string;
 }
@@ -21,6 +22,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   loginWithGoogle: (credential: string) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -40,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedToken && storedUser) {
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
+      refreshUser();
     }
     setIsLoading(false);
   }, []);
@@ -82,6 +85,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push("/dashboard");
   };
 
+  const refreshUser = async () => {
+    const t = localStorage.getItem("token");
+    if (!t) return;
+    try {
+      const res = await fetch(`${API_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
+        localStorage.setItem("user", JSON.stringify(data));
+      }
+    } catch {}
+  };
+
   const logout = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -98,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, loginWithGoogle, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, token, login, loginWithGoogle, logout, refreshUser, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

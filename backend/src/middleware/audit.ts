@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { AuditLog } from "../types";
 import { describeAction } from "../utils/format";
-import { getDb, saveDb } from "../db";
+import { getDb } from "../db";
 
 export const auditLogs: AuditLog[] = [];
 
-export const createAuditLog = (userId: string, userEmail: string, action: string, module: string, resourceId: string = "", details: string = "", ip: string = "") => {
+export const createAuditLog = async (userId: string, userEmail: string, action: string, module: string, resourceId: string = "", details: string = "", ip: string = "") => {
   const log: AuditLog = {
     id: String(Date.now()) + String(Math.random()).slice(2, 8),
     userId,
@@ -20,9 +20,8 @@ export const createAuditLog = (userId: string, userEmail: string, action: string
   auditLogs.push(log);
   try {
     const db = getDb();
-    db.run("INSERT INTO audit_logs (id, userId, userEmail, action, module, resourceId, details, ip, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    await db.query("INSERT INTO audit_logs (id, userid, useremail, action, module, resourceid, details, ip, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
       [log.id, log.userId, log.userEmail, log.action, log.module, log.resourceId, log.details, log.ip, log.timestamp]);
-    saveDb();
   } catch { /* silent */ }
   console.log(`[Audit] ${userEmail} → ${describeAction(action, module, details)}${resourceId ? ` (${resourceId})` : ""}`);
   return log;

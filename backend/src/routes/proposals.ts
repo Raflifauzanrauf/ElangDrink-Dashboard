@@ -43,23 +43,21 @@ function getLiveRole(userId: string): string {
   return u ? u.role : "";
 }
 
-export function loadProposalsFromDb(): void {
+export async function loadProposalsFromDb(): Promise<void> {
   proposals.length = 0;
   try {
     const db = getDb();
-    const rows = db.exec("SELECT id, userId, userEmail, proposalCode, date, division, currency, totalAmount, description, pdfFile, type, step, status, createdAt, updatedAt FROM proposals");
-    if (rows.length > 0) {
-      rows[0].values.forEach((r: any) => {
-        proposals.push({
-          id: r[0], userId: r[1], userEmail: r[2], proposalCode: r[3], date: r[4],
-          division: r[5], currency: r[6], totalAmount: r[7], description: r[8],
-          pdfFile: r[9], type: r[10], step: r[11], status: r[12],
-          createdAt: r[13], updatedAt: r[14],
-        });
-        const num = parseInt(r[3].replace("CC-", ""), 10);
-        if (!isNaN(num) && num > proposalCounter) proposalCounter = num;
+    const result = await db.query("SELECT id, userid, useremail, proposalcode, date, division, currency, totalamount, description, pdffile, type, step, status, createdat, updatedat FROM proposals");
+    result.rows.forEach((r: any) => {
+      proposals.push({
+        id: r.id, userId: r.userid, userEmail: r.useremail, proposalCode: r.proposalcode, date: r.date,
+        division: r.division, currency: r.currency, totalAmount: r.totalamount, description: r.description,
+        pdfFile: r.pdffile, type: r.type, step: r.step, status: r.status,
+        createdAt: r.createdat instanceof Date ? r.createdat.toISOString() : String(r.createdat || ""), updatedAt: r.updatedat instanceof Date ? r.updatedat.toISOString() : String(r.updatedat || ""),
       });
-    }
+      const num = parseInt(r.proposalcode.replace("CC-", ""), 10);
+      if (!isNaN(num) && num > proposalCounter) proposalCounter = num;
+    });
   } catch {}
 }
 
@@ -102,7 +100,7 @@ router.get("/:id", authenticate, authorizePermission("proposal:read"), (req: Req
   return res.json(proposal);
 });
 
-router.post("/", authenticate, authorizePermission("proposal:create"), upload.single("pdfFile"), (req: Request, res: Response) => {
+router.post("/", authenticate, authorizePermission("proposal:create"), upload.single("pdfFile"), async (req: Request, res: Response) => {
   const { division, currency, totalAmount, description, type } = req.body;
   if (!division || !currency || !totalAmount) {
     return res.status(400).json({ message: "Division, currency, and total amount are required" });
@@ -126,17 +124,17 @@ router.post("/", authenticate, authorizePermission("proposal:create"), upload.si
     updatedAt: new Date().toISOString(),
   };
   proposals.push(proposal);
-  dbRun("INSERT INTO proposals (id, userId, userEmail, proposalCode, date, division, currency, totalAmount, description, pdfFile, type, step, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  await dbRun("INSERT INTO proposals (id, userid, useremail, proposalcode, date, division, currency, totalamount, description, pdffile, type, step, status, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
     [proposal.id, proposal.userId, proposal.userEmail, proposal.proposalCode, proposal.date, proposal.division, proposal.currency, proposal.totalAmount, proposal.description, proposal.pdfFile, proposal.type, proposal.step, proposal.status, proposal.createdAt, proposal.updatedAt]);
   createAuditLog(req.user!.userId, req.user!.email, "create", "proposal", proposal.id, `Membuat proposal: ${proposal.proposalCode}`);
   const adminUsers = users.filter((u) => u.role === "admin");
-  adminUsers.forEach((admin) => {
+  for (const admin of adminUsers) {
     createNotification(admin.id, "Proposal Baru", `${req.user!.email} membuat proposal ${proposal.proposalCode} (${proposalType === "heavy" ? "Pengajuan Berat" : "Pengajuan Keuangan"})`, "info", `/dashboard/proposals/${proposal.id}`);
-  });
+  }
   return res.status(201).json(proposal);
 });
 
-router.put("/:id/approve", authenticate, authorizePermission("proposal:approve"), (req: Request, res: Response) => {
+router.put("/:id/approve", authenticate, authorizePermission("proposal:approve"), async (req: Request, res: Response) => {
   const proposal = proposals.find((p) => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ message: "Proposal not found" });
   if (proposal.status !== "active") return res.status(400).json({ message: "Already processed" });
@@ -151,25 +149,25 @@ router.put("/:id/approve", authenticate, authorizePermission("proposal:approve")
   proposal.step++;
   if (proposal.step >= maxStep) proposal.status = "approved";
   proposal.updatedAt = new Date().toISOString();
-  dbRun("UPDATE proposals SET step=?, status=?, updatedAt=? WHERE id=?", [proposal.step, proposal.status, proposal.updatedAt, proposal.id]);
+  await dbRun("UPDATE proposals SET step=$1, status=$2, updatedat=$3 WHERE id=$4", [proposal.step, proposal.status, proposal.updatedAt, proposal.id]);
   createAuditLog(req.user!.userId, req.user!.email, "update", "proposal", proposal.id, `Approved ${steps[proposal.step - 1] || ""}: ${proposal.proposalCode}`);
   createNotification(proposal.userId, "Proposal Disetujui", `Proposal ${proposal.proposalCode} telah disetujui oleh ${req.user!.email}`, "success", `/dashboard/proposals/${proposal.id}`);
   return res.json(proposal);
 });
 
-router.put("/:id/reject", authenticate, authorizePermission("proposal:approve"), (req: Request, res: Response) => {
+router.put("/:id/reject", authenticate, authorizePermission("proposal:approve"), async (req: Request, res: Response) => {
   const proposal = proposals.find((p) => p.id === req.params.id);
   if (!proposal) return res.status(404).json({ message: "Proposal not found" });
   if (proposal.status !== "active") return res.status(400).json({ message: "Already processed" });
   proposal.status = "rejected";
   proposal.updatedAt = new Date().toISOString();
-  dbRun("UPDATE proposals SET status=?, updatedAt=? WHERE id=?", [proposal.status, proposal.updatedAt, proposal.id]);
+  await dbRun("UPDATE proposals SET status=$1, updatedat=$2 WHERE id=$3", [proposal.status, proposal.updatedAt, proposal.id]);
   createAuditLog(req.user!.userId, req.user!.email, "update", "proposal", proposal.id, `Rejected: ${proposal.proposalCode}`);
   createNotification(proposal.userId, "Proposal Ditolak", `Proposal ${proposal.proposalCode} telah ditolak oleh ${req.user!.email}`, "error", `/dashboard/proposals/${proposal.id}`);
   return res.json(proposal);
 });
 
-router.delete("/:id", authenticate, authorizePermission("proposal:delete"), (req: Request, res: Response) => {
+router.delete("/:id", authenticate, authorizePermission("proposal:delete"), async (req: Request, res: Response) => {
   const idx = proposals.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Proposal not found" });
   const proposal = proposals[idx];
@@ -182,7 +180,7 @@ router.delete("/:id", authenticate, authorizePermission("proposal:delete"), (req
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
   proposals.splice(idx, 1);
-  dbRun("DELETE FROM proposals WHERE id = ?", [req.params.id]);
+  await dbRun("DELETE FROM proposals WHERE id = $1", [req.params.id]);
   createAuditLog(req.user!.userId, req.user!.email, "delete", "proposal", req.params.id as string, `Deleted: ${proposal.proposalCode}`);
   return res.json({ message: "Proposal deleted" });
 });

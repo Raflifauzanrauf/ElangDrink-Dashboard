@@ -163,7 +163,7 @@ export default function ProposalsPage() {
           <h1 className="text-2xl font-bold">Proposals</h1>
           <p className="text-muted-foreground text-sm">{total} proposals</p>
         </div>
-        {canCreate && (
+        {canCreate && currentUser?.roleId !== "r1" && (
           <Button variant="secondary" onClick={() => setShowForm(!showForm)}>
             <Plus size={16} className="mr-2" /> New Proposal
           </Button>

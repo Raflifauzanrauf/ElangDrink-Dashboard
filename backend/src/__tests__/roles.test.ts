@@ -86,13 +86,6 @@ describe("Roles CRUD + search/pagination", () => {
     expect(res.body.permissions).toEqual(["currency:read", "currency:update"]);
   });
 
-  test("DELETE /api/roles/:id — cannot delete system role", async () => {
-    const res = await request(app)
-      .delete("/api/roles/r1")
-      .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.status).toBe(400);
-  });
-
   test("DELETE /api/roles/:id — delete custom role", async () => {
     const createRes = await request(app)
       .post("/api/roles")

@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { initDb } from "./db";
-import { seedPermissions, seedRoles, seedAdmin, migrateRoles } from "./middleware/auth";
+import { seedPermissions, seedRoles, seedAdmin, migrateRoles, repairAdminRole } from "./middleware/auth";
 import authRoutes from "./routes/auth";
 import usersRoutes from "./routes/users";
 import rolesRoutes from "./routes/roles";
@@ -33,13 +33,14 @@ app.use("/api/notifications", notificationsRoutes);
 
 const start = async () => {
   await initDb();
-  seedPermissions();
-  seedRoles();
-  migrateRoles();
+  await seedPermissions();
+  await seedRoles();
+  await migrateRoles();
+  await repairAdminRole();
   await seedAdmin();
-  loadCurrenciesFromDb();
-  loadProposalsFromDb();
-  loadNotificationsFromDb();
+  await loadCurrenciesFromDb();
+  await loadProposalsFromDb();
+  await loadNotificationsFromDb();
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });

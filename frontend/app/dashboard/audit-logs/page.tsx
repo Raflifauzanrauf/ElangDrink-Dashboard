@@ -81,13 +81,15 @@ export default function AuditLogsPage() {
     if (moduleFilter && moduleFilter !== "all") params.set("module", moduleFilter);
     params.set("page", String(page));
     params.set("limit", String(limit));
-    const res = await fetch(`${API_URL}/audit-logs?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.ok) {
-      const data = await res.json();
-      setLogs(data.data);
-      setTotal(data.pagination.total);
-      setTotalPages(data.pagination.totalPages);
-    }
+    try {
+      const res = await fetch(`${API_URL}/audit-logs?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.data);
+        setTotal(data.pagination.total);
+        setTotalPages(data.pagination.totalPages);
+      }
+    } catch { /* server unreachable */ }
   };
 
   useEffect(() => {

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { JwtPayload, Role, User, Permission, AppRole } from "../types";
-import { getDb, isDbEmpty, saveDb, dbRun } from "../db";
+import { getDb, isDbEmpty, dbRun } from "../db";
 
 const JWT_SECRET = process.env.JWT_SECRET || "myapp-secret-key-change-in-production";
 
@@ -18,34 +18,34 @@ export const users: User[] = [];
 export const roles: AppRole[] = [];
 export const permissions: Permission[] = [];
 
-function loadFromDb(): void {
+async function loadFromDb(): Promise<void> {
   const db = getDb();
-  const permRows = db.exec("SELECT id, code, name, module, description FROM permissions");
-  if (permRows.length > 0) {
+  const permResult = await db.query("SELECT id, code, name, module, description FROM permissions");
+  if (permResult.rows.length > 0) {
     permissions.length = 0;
-    permissions.push(...permRows[0].values.map((r: any) => ({ id: r[0], code: r[1], name: r[2], description: r[4] })));
+    permissions.push(...permResult.rows.map((r: any) => ({ id: r.id, code: r.code, name: r.name, description: r.description })));
   }
-  const roleRows = db.exec("SELECT id, name, description, permissions FROM roles");
-  if (roleRows.length > 0) {
+  const roleResult = await db.query("SELECT id, name, description, permissions FROM roles");
+  if (roleResult.rows.length > 0) {
     roles.length = 0;
-    roles.push(...roleRows[0].values.map((r: any) => ({
-      id: r[0], name: r[1], description: r[2],
-      permissions: JSON.parse(r[3] || "[]"),
+    roles.push(...roleResult.rows.map((r: any) => ({
+      id: r.id, name: r.name, description: r.description,
+      permissions: JSON.parse(r.permissions || "[]"),
       createdAt: "", updatedAt: "",
     })));
   }
-  const userRows = db.exec("SELECT id, email, password, name, role, roleId, createdAt, updatedAt FROM users");
-  if (userRows.length > 0) {
+  const userResult = await db.query("SELECT id, email, password, name, role, roleid, division, createdat, updatedat FROM users");
+  if (userResult.rows.length > 0) {
     users.length = 0;
-    users.push(...userRows[0].values.map((r: any) => ({
-      id: r[0], email: r[1], password: r[2], name: r[3], role: r[4], roleId: r[5],
-      createdAt: r[6], updatedAt: r[7],
+    users.push(...userResult.rows.map((r: any) => ({
+      id: r.id, email: r.email, password: r.password, name: r.name, role: r.role, roleId: r.roleid,
+      division: r.division || "", createdAt: r.createdat instanceof Date ? r.createdat.toISOString() : String(r.createdat || ""), updatedAt: r.updatedat instanceof Date ? r.updatedat.toISOString() : String(r.updatedat || ""),
     })));
   }
 }
 
-export const seedPermissions = () => {
-  if (!isDbEmpty("permissions")) { loadFromDb(); return; }
+export const seedPermissions = async () => {
+  if (!(await isDbEmpty("permissions"))) { await loadFromDb(); return; }
   const db = getDb();
   const allPermissions = [
     { id: "p1", code: "user:read", name: "View Users", description: "View user list", module: "user" },
@@ -67,16 +67,15 @@ export const seedPermissions = () => {
     { id: "p17", code: "proposal:approve", name: "Approve Proposals", description: "Approve or reject proposals", module: "proposal" },
     { id: "p18", code: "proposal:delete", name: "Delete Proposals", description: "Remove proposals", module: "proposal" },
   ];
-  const insert = db.prepare("INSERT OR IGNORE INTO permissions (id, code, name, module, description) VALUES (?, ?, ?, ?, ?)");
-  allPermissions.forEach((p) => { insert.run([p.id, p.code, p.name, p.module, p.description]); });
-  insert.free();
+  for (const p of allPermissions) {
+    try { await db.query("INSERT INTO permissions (id, code, name, module, description) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (code) DO NOTHING", [p.id, p.code, p.name, p.module, p.description]); } catch {}
+  }
   permissions.push(...allPermissions);
-  saveDb();
   console.log(`Seeded ${permissions.length} permissions`);
 };
 
-export const seedRoles = () => {
-  if (!isDbEmpty("roles")) { loadFromDb(); return; }
+export const seedRoles = async () => {
+  if (!(await isDbEmpty("roles"))) { await loadFromDb(); return; }
   const db = getDb();
   const now = new Date().toISOString();
   const adminPerms = permissions.map((p) => p.code);
@@ -88,51 +87,62 @@ export const seedRoles = () => {
     { id: "r5", name: "spv", desc: "SPV who can approve proposals at SPV step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
     { id: "r6", name: "finance", desc: "Finance who can approve proposals at Finance step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
   ];
-  const insert = db.prepare("INSERT OR IGNORE INTO roles (id, name, description, permissions, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)");
-  roleData.forEach((r) => {
+  for (const r of roleData) {
     const permsJson = JSON.stringify(r.perms);
-    insert.run([r.id, r.name, r.desc, permsJson, now, now]);
+    try { await db.query("INSERT INTO roles (id, name, description, permissions, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING", [r.id, r.name, r.desc, permsJson, now, now]); } catch {}
     roles.push({
       id: r.id, name: r.name, description: r.desc,
       permissions: r.perms, createdAt: now, updatedAt: now,
     });
-  });
-  insert.free();
-  saveDb();
+  }
   console.log(`Seeded ${roles.length} roles`);
 };
 
-export function migrateRoles(): void {
+export const migrateRoles = async () => {
   const db = getDb();
   const now = new Date().toISOString();
   const newRoles = [
     { id: "r5", name: "spv", desc: "SPV who can approve proposals at SPV step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
     { id: "r6", name: "finance", desc: "Finance who can approve proposals at Finance step", perms: ["currency:read", "proposal:read", "proposal:approve"] },
   ];
-  newRoles.forEach((r) => {
+  for (const r of newRoles) {
     const existing = roles.find((role) => role.id === r.id || role.name === r.name);
     if (!existing) {
       const permsJson = JSON.stringify(r.perms);
-      db.run("INSERT OR IGNORE INTO roles (id, name, description, permissions, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)", [r.id, r.name, r.desc, permsJson, now, now]);
+      try { await db.query("INSERT INTO roles (id, name, description, permissions, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING", [r.id, r.name, r.desc, permsJson, now, now]); } catch {}
       roles.push({
         id: r.id, name: r.name, description: r.desc,
         permissions: r.perms, createdAt: now, updatedAt: now,
       });
     }
+  }
+};
+
+export const repairAdminRole = async () => {
+  const db = getDb();
+  const adminUser = users.find((u) => u.id === "1");
+  if (!adminUser) return;
+  const adminRoleExists = roles.find((r) => r.id === "r1");
+  if (adminRoleExists) return;
+  const now = new Date().toISOString();
+  const allPerms = permissions.map((p) => p.code);
+  const permsJson = JSON.stringify(allPerms);
+  try { await db.query("INSERT INTO roles (id, name, description, permissions, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO NOTHING", ["r1", "admin", "Super administrator with all permissions", permsJson, now, now]); } catch {}
+  roles.push({
+    id: "r1", name: "admin", description: "Super administrator with all permissions",
+    permissions: allPerms, createdAt: now, updatedAt: now,
   });
-  saveDb();
-}
+  console.log("Repaired missing admin role (r1)");
+};
 
 export const seedAdmin = async () => {
-  if (!isDbEmpty("users")) { loadFromDb(); return; }
+  if (!(await isDbEmpty("users"))) { await loadFromDb(); return; }
   const db = getDb();
   const exists = users.find((u) => u.email === "admin@admin.com");
   if (!exists) {
     const hashed = await bcrypt.hash("admin123", 10);
     const now = new Date().toISOString();
-    const insert = db.prepare("INSERT OR IGNORE INTO users (id, email, password, name, role, roleId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-    insert.run(["1", "admin@admin.com", hashed, "Super Admin", "admin", "r1", now, now]);
-    insert.free();
+    try { await db.query("INSERT INTO users (id, email, password, name, role, roleid, division, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO NOTHING", ["1", "admin@admin.com", hashed, "Super Admin", "admin", "r1", "IT", now, now]); } catch {}
     users.push({
       id: "1",
       email: "admin@admin.com",
@@ -140,10 +150,10 @@ export const seedAdmin = async () => {
       name: "Super Admin",
       role: "admin",
       roleId: "r1",
+      division: "IT",
       createdAt: now,
       updatedAt: now,
     });
-    saveDb();
     console.log("Admin seeded: admin@admin.com / admin123");
   }
 };
@@ -175,7 +185,15 @@ export const authorizePermission = (...required: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) return res.status(401).json({ message: "Authentication required" });
     const userRole = roles.find((r) => r.id === req.user!.roleId) || roles.find((r) => r.name === req.user!.role);
-    if (!userRole) return res.status(403).json({ message: "Role not found" });
+    if (!userRole) {
+      const user = users.find((u) => u.id === req.user!.userId);
+      if (!user) return res.status(403).json({ message: "User not found" });
+      const fallbackRole = roles.find((r) => r.name === user.role);
+      if (!fallbackRole) return res.status(403).json({ message: "Role not found — the role assigned to your account has been deleted" });
+      const hasAll = required.every((p) => fallbackRole.permissions.includes(p));
+      if (!hasAll) return res.status(403).json({ message: "Insufficient permissions" });
+      return next();
+    }
     const hasAll = required.every((p) => userRole.permissions.includes(p));
     if (!hasAll) return res.status(403).json({ message: "Insufficient permissions" });
     next();
@@ -188,46 +206,24 @@ export const generateToken = (payload: JwtPayload): string => {
 
 export const getPermissionsForRole = (roleId: string): string[] => {
   const role = roles.find((r) => r.id === roleId);
-  return role ? role.permissions : [];
-};
-
-function loadRows(table: string): any[] {
-  try {
-    const db = getDb();
-    const r = db.exec(`SELECT * FROM ${table}`);
-    if (r.length === 0) return [];
-    const cols = r[0].columns;
-    return r[0].values.map((row: any) => {
-      const obj: any = {};
-      cols.forEach((col: string, i: number) => {
-        let val = row[i];
-        if (col === "permissions" && typeof val === "string") val = JSON.parse(val);
-        if ((col === "isBase" || col === "read") && typeof val === "number") val = val === 1;
-        obj[col] = val;
-      });
-      return obj;
-    });
-  } catch { return []; }
-}
+  return role ? role.permissions : [];};
 
 export function loadAllFromDb(): void {
-  loadFromDb();
+  // No-op: data loaded during seed functions
 }
 
-export function persistUser(user: User): void {
-  try { dbRun("INSERT OR REPLACE INTO users (id, email, password, name, role, roleId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [user.id, user.email, user.password, user.name, user.role, user.roleId, user.createdAt, user.updatedAt]); } catch {}
+export async function persistUser(user: User): Promise<void> {
+  try { await dbRun("INSERT INTO users (id, email, password, name, role, roleid, division, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET email=$2, password=$3, name=$4, role=$5, roleid=$6, division=$7, updatedat=$9", [user.id, user.email, user.password, user.name, user.role, user.roleId, user.division, user.createdAt, user.updatedAt]); } catch {}
 }
 
-export function removeUser(id: string): void {
-  try { dbRun("DELETE FROM users WHERE id = ?", [id]); } catch {}
+export async function removeUser(id: string): Promise<void> {
+  try { await dbRun("DELETE FROM users WHERE id = $1", [id]); } catch {}
 }
 
-export function persistRole(role: AppRole): void {
-  try { dbRun("INSERT OR REPLACE INTO roles (id, name, description, permissions, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
-    [role.id, role.name, role.description, JSON.stringify(role.permissions), role.createdAt, role.updatedAt]); } catch {}
+export async function persistRole(role: AppRole): Promise<void> {
+  try { await dbRun("INSERT INTO roles (id, name, description, permissions, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name=$2, description=$3, permissions=$4, updatedat=$6", [role.id, role.name, role.description, JSON.stringify(role.permissions), role.createdAt, role.updatedAt]); } catch {}
 }
 
-export function removeRole(id: string): void {
-  try { dbRun("DELETE FROM roles WHERE id = ?", [id]); } catch {}
+export async function removeRole(id: string): Promise<void> {
+  try { await dbRun("DELETE FROM roles WHERE id = $1", [id]); } catch {}
 }

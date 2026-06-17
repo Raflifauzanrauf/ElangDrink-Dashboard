@@ -34,8 +34,8 @@ export default function DashboardPage() {
     fetch("http://localhost:4000/api/dashboard", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
-      .then(setData)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setData(d); })
       .catch(() => {});
 
     fetch("https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json")
@@ -46,7 +46,7 @@ export default function DashboardPage() {
 
   if (authLoading || !data) return null;
 
-  const chartData = Object.entries(data.proposalsByDay)
+  const chartData = Object.entries(data.proposalsByDay || {})
     .map(([day, count]) => ({ day: day.slice(5), count }))
     .slice(-14);
 
@@ -123,7 +123,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {user?.role === "admin" && (
+      {user && ["r1"].includes(user.roleId) && (
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -142,7 +142,7 @@ export default function DashboardPage() {
                 )}
               </div>
             ))}
-            {data.recentActivity.slice(0, 5).map((a) => (
+            {(data.recentActivity || []).slice(0, 5).map((a) => (
               <div key={a.id} className="flex items-center gap-3 text-sm text-muted-foreground">
                 <Clock size={14} />
                 <span>

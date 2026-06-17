@@ -256,7 +256,7 @@ export default function ProposalDetailPage() {
                 </Button>
               </>
             )}
-            {(currentUser?.role === "admin" || proposal.userId === currentUser?.id) && proposal.status === "active" && (
+            {(currentUser?.permissions?.includes("proposal:delete") || proposal.userId === currentUser?.id) && proposal.status === "active" && (
               <Button size="sm" variant="ghost" onClick={handleDelete}>
                 <Trash2 size={14} className="mr-1.5" /> Delete
               </Button>

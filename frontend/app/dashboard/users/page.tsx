@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, UserPlus, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, UserPlus, Search, ChevronLeft, ChevronRight, List, TreePine, ChevronDown, ChevronRight as ChevronRightIcon, Users } from "lucide-react";
 
 interface ApiUser {
   id: string;
@@ -16,6 +16,7 @@ interface ApiUser {
   name: string;
   role: string;
   roleId: string;
+  division: string;
 }
 
 interface ApiRole {
@@ -26,12 +27,22 @@ interface ApiRole {
 
 const API_URL = "http://localhost:4000/api";
 
-const roleBadge: Record<string, string> = {
+const roleColors: Record<string, string> = {
   admin: "bg-blue-500/20 text-blue-400",
   manager: "bg-green-500/20 text-green-400",
   editor: "bg-yellow-500/20 text-yellow-400",
   viewer: "bg-gray-500/20 text-gray-400",
+  spv: "bg-purple-500/20 text-purple-400",
+  finance: "bg-cyan-500/20 text-cyan-400",
 };
+
+function badgeClass(role: string): string {
+  return roleColors[role.toLowerCase()] || "bg-gray-500/20 text-gray-400";
+}
+
+const divisions = ["Finance", "Marketing", "Operations", "IT", "HR", "Sales", "Production", "R&D"];
+
+type ViewMode = "list" | "tree";
 
 export default function UsersPage() {
   const { user: currentUser, isLoading: authLoading } = useAuth();
@@ -40,20 +51,23 @@ export default function UsersPage() {
   const [roles, setRoles] = useState<ApiRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "", roleId: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", roleId: "", division: "" });
   const [formError, setFormError] = useState("");
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
+  const [divisionFilter, setDivisionFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [expandedDivisions, setExpandedDivisions] = useState<Set<string>>(new Set());
 
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = currentUser?.roleId === "r1";
   const limit = 10;
 
   const fetchRoles = async () => {
     const token = localStorage.getItem("token");
-    const res = await fetch(`${API_URL}/roles`, {
+    const res = await fetch(`${API_URL}/roles?limit=100`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (res.ok) {
@@ -70,6 +84,7 @@ export default function UsersPage() {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (roleFilter && roleFilter !== "all") params.set("role", roleFilter);
+    if (divisionFilter && divisionFilter !== "all") params.set("division", divisionFilter);
     params.set("page", String(page));
     params.set("limit", String(limit));
     const res = await fetch(`${API_URL}/users?${params}`, {
@@ -88,7 +103,7 @@ export default function UsersPage() {
     if (!currentUser) { router.push("/login"); return; }
     if (!isAdmin) { router.push("/dashboard"); return; }
     Promise.all([fetchUsers(), fetchRoles()]).finally(() => setLoading(false));
-  }, [currentUser, authLoading, router, page, roleFilter, search]);
+  }, [currentUser, authLoading, router, page, roleFilter, divisionFilter, search]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +125,7 @@ export default function UsersPage() {
       setFormError(err.message);
       return;
     }
-    setForm({ name: "", email: "", password: "", roleId: roles[0]?.id || "" });
+    setForm({ name: "", email: "", password: "", roleId: roles[0]?.id || "", division: "" });
     setShowForm(false);
     setPage(1);
     fetchUsers();
@@ -125,6 +140,24 @@ export default function UsersPage() {
     });
     fetchUsers();
   };
+
+  const toggleDivision = (div: string) => {
+    setExpandedDivisions((prev) => {
+      const next = new Set(prev);
+      if (next.has(div)) next.delete(div);
+      else next.add(div);
+      return next;
+    });
+  };
+
+  const groupedByDivision: Record<string, ApiUser[]> = {};
+  for (const u of users) {
+    const div = u.division || "Unassigned";
+    if (!groupedByDivision[div]) groupedByDivision[div] = [];
+    groupedByDivision[div].push(u);
+  }
+
+  const sortedDivisions = Object.keys(groupedByDivision).sort();
 
   if (authLoading || loading) {
     return (
@@ -144,11 +177,29 @@ export default function UsersPage() {
           <h1 className="text-2xl font-bold">Users</h1>
           <p className="text-muted-foreground text-sm">{total} users</p>
         </div>
-        {isAdmin && (
-          <Button variant="secondary" onClick={() => setShowForm(!showForm)}>
-            <UserPlus size={16} className="mr-2" /> New User
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center rounded-lg border border-border overflow-hidden">
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-2 transition-colors ${viewMode === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              title="List view"
+            >
+              <List size={16} />
+            </button>
+            <button
+              onClick={() => setViewMode("tree")}
+              className={`p-2 transition-colors ${viewMode === "tree" ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              title="Tree view"
+            >
+              <TreePine size={16} />
+            </button>
+          </div>
+          {isAdmin && (
+            <Button variant="secondary" onClick={() => setShowForm(!showForm)}>
+              <UserPlus size={16} className="mr-2" /> New User
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
@@ -168,6 +219,16 @@ export default function UsersPage() {
             {roles.map((r) => (
               <SelectItem key={r.id} value={r.name}>{r.name}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={divisionFilter} onValueChange={(v) => { setDivisionFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="All divisions" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All divisions</SelectItem>
+            {divisions.map((d) => (
+              <SelectItem key={d} value={d}>{d}</SelectItem>
+            ))}
+            <SelectItem value="Unassigned">Unassigned</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -200,6 +261,17 @@ export default function UsersPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="udiv">Division</Label>
+                <Select value={form.division} onValueChange={(v) => setForm({ ...form, division: v })}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select division" /></SelectTrigger>
+                  <SelectContent>
+                    {divisions.map((d) => (
+                      <SelectItem key={d} value={d}>{d}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               {formError && <p className="text-sm text-destructive sm:col-span-2">{formError}</p>}
               <div className="flex gap-3 sm:col-span-2">
                 <Button type="submit">Create</Button>
@@ -210,37 +282,104 @@ export default function UsersPage() {
         </Card>
       )}
 
-      <div className="space-y-2">
-        {users.map((u) => (
-          <Card key={u.id} className="transition-all duration-200 hover:border-foreground/30">
-            <CardContent className="flex items-center justify-between py-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-foreground/10 flex items-center justify-center text-sm font-medium">
-                  {u.name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-sm font-medium">{u.name}</p>
-                  <p className="text-xs text-muted-foreground">{u.email}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roleBadge[u.role] || "bg-gray-500/20 text-gray-400"}`}>{u.role}</span>
-                {isAdmin && u.id !== currentUser?.id && (
-                  <button onClick={() => handleDelete(u.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={16} /></button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {viewMode === "list" ? (
+        <>
+          <div className="space-y-2">
+            {users.map((u) => (
+              <Card key={u.id} className="transition-all duration-200 hover:border-foreground/30">
+                <CardContent className="flex items-center justify-between py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-foreground/10 flex items-center justify-center text-sm font-medium">
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{u.name}</p>
+                      <p className="text-xs text-muted-foreground">{u.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {u.division && <span className="text-[10px] text-muted-foreground px-2 py-0.5 rounded-full bg-foreground/5">{u.division}</span>}
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass(u.role)}`}>{u.role}</span>
+                    {isAdmin && u.id !== currentUser?.id && (
+                      <button onClick={() => handleDelete(u.id)} className="text-muted-foreground hover:text-destructive transition-colors"><Trash2 size={16} /></button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4">
-          <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronLeft size={18} /></button>
-          <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
-          <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}
-            className="text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronRight size={18} /></button>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4">
+              <button onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronLeft size={18} /></button>
+              <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+              <button onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages}
+                className="text-muted-foreground hover:text-foreground disabled:opacity-30"><ChevronRight size={18} /></button>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-3">
+          {sortedDivisions.map((div) => {
+            const divUsers = groupedByDivision[div];
+            const isExpanded = expandedDivisions.has(div);
+            const roleGroups: Record<string, ApiUser[]> = {};
+            for (const u of divUsers) {
+              if (!roleGroups[u.role]) roleGroups[u.role] = [];
+              roleGroups[u.role].push(u);
+            }
+            const sortedRoles = Object.keys(roleGroups).sort();
+            return (
+              <Card key={div} className="overflow-hidden transition-all duration-200 hover:border-foreground/30">
+                <button
+                  onClick={() => toggleDivision(div)}
+                  className="w-full flex items-center justify-between p-4 text-left hover:bg-accent/30 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <Users size={16} className="text-muted-foreground" />
+                    <span className="font-medium">{div}</span>
+                    <span className="text-xs text-muted-foreground">({divUsers.length} user{divUsers.length !== 1 ? "s" : ""})</span>
+                  </div>
+                  {isExpanded ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRightIcon size={16} className="text-muted-foreground" />}
+                </button>
+                {isExpanded && (
+                  <div className="border-t border-border px-4 py-3 space-y-3">
+                    {sortedRoles.map((r) => (
+                      <div key={r}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass(r)}`}>{r}</span>
+                          <span className="text-xs text-muted-foreground">({roleGroups[r].length})</span>
+                        </div>
+                        <div className="ml-4 space-y-1.5">
+                          {roleGroups[r].map((u) => (
+                            <div key={u.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-accent/30 transition-colors">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-7 h-7 rounded-full bg-foreground/10 flex items-center justify-center text-[10px] font-medium shrink-0">
+                                  {u.name.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-sm">{u.name}</p>
+                                  <p className="text-[10px] text-muted-foreground">{u.email}</p>
+                                </div>
+                              </div>
+                              {isAdmin && u.id !== currentUser?.id && (
+                                <button onClick={() => handleDelete(u.id)} className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+          {users.length === 0 && <p className="text-center text-muted-foreground py-12">No users found.</p>}
         </div>
       )}
     </div>

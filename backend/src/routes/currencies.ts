@@ -13,20 +13,18 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 export const currencies: Currency[] = [];
 
-export function loadCurrenciesFromDb(): void {
+export async function loadCurrenciesFromDb(): Promise<void> {
   currencies.length = 0;
   try {
     const db = getDb();
-    const rows = db.exec("SELECT id, code, name, symbol, exchangeRate, isBase, createdAt, updatedAt FROM currencies");
-    if (rows.length > 0) {
-      rows[0].values.forEach((r: any) => {
-        currencies.push({
-          id: r[0], code: r[1], name: r[2], symbol: r[3],
-          exchangeRate: r[4], isBase: r[5] === 1,
-          createdAt: r[6], updatedAt: r[7],
-        });
+    const result = await db.query("SELECT id, code, name, symbol, exchangerate, isbase, createdat, updatedat FROM currencies");
+    result.rows.forEach((r: any) => {
+      currencies.push({
+        id: r.id, code: r.code, name: r.name, symbol: r.symbol,
+        exchangeRate: r.exchangerate, isBase: r.isbase,
+        createdAt: r.createdat instanceof Date ? r.createdat.toISOString() : String(r.createdat || ""), updatedAt: r.updatedat instanceof Date ? r.updatedat.toISOString() : String(r.updatedat || ""),
       });
-    }
+    });
   } catch {}
 }
 
@@ -72,7 +70,7 @@ router.get("/export/csv", authenticate, authorizePermission("currency:read"), (_
   return res.send(csv);
 });
 
-router.post("/import/csv", authenticate, authorizePermission("currency:create"), upload.single("file"), (req: Request, res: Response) => {
+router.post("/import/csv", authenticate, authorizePermission("currency:create"), upload.single("file"), async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ message: "CSV file is required" });
   const content = req.file.buffer.toString("utf-8");
   const rows = parseCsv(content);
@@ -82,12 +80,12 @@ router.post("/import/csv", authenticate, authorizePermission("currency:create"),
   let updated = 0;
   const errors: { row: number; message: string }[] = [];
 
-  rows.forEach((row, idx) => {
+  for (const [idx, row] of rows.entries()) {
     const code = row.code?.toUpperCase();
     const name = row.name;
     if (!code || !name) {
       errors.push({ row: idx + 2, message: "Missing code or name" });
-      return;
+      continue;
     }
     const existing = currencies.find((c) => c.code === code);
     if (existing) {
@@ -96,7 +94,7 @@ router.post("/import/csv", authenticate, authorizePermission("currency:create"),
       if (row.exchangerate) existing.exchangeRate = parseFloat(row.exchangerate) || existing.exchangeRate;
       if (row.isbase !== undefined) existing.isBase = row.isbase === "true" || row.isbase === "1";
       existing.updatedAt = new Date().toISOString();
-      dbRun("UPDATE currencies SET name=?, symbol=?, exchangeRate=?, isBase=?, updatedAt=? WHERE code=?", [existing.name, existing.symbol, existing.exchangeRate, existing.isBase ? 1 : 0, existing.updatedAt, existing.code]);
+      await dbRun("UPDATE currencies SET name=$1, symbol=$2, exchangerate=$3, isbase=$4, updatedat=$5 WHERE code=$6", [existing.name, existing.symbol, existing.exchangeRate, existing.isBase, existing.updatedAt, existing.code]);
       updated++;
     } else {
       const newCurrency = {
@@ -110,10 +108,10 @@ router.post("/import/csv", authenticate, authorizePermission("currency:create"),
         updatedAt: new Date().toISOString(),
       };
       currencies.push(newCurrency);
-      dbRun("INSERT INTO currencies (id, code, name, symbol, exchangeRate, isBase, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [newCurrency.id, newCurrency.code, newCurrency.name, newCurrency.symbol, newCurrency.exchangeRate, newCurrency.isBase ? 1 : 0, newCurrency.createdAt, newCurrency.updatedAt]);
+      await dbRun("INSERT INTO currencies (id, code, name, symbol, exchangerate, isbase, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [newCurrency.id, newCurrency.code, newCurrency.name, newCurrency.symbol, newCurrency.exchangeRate, newCurrency.isBase, newCurrency.createdAt, newCurrency.updatedAt]);
       imported++;
     }
-  });
+  }
 
   createAuditLog(req.user!.userId, req.user!.email, "import", "currency", "", `Import ${imported} data, update ${updated}, ${errors.length} error`);
   return res.json({ imported, updated, errors });
@@ -125,7 +123,7 @@ router.get("/:id", authenticate, authorizePermission("currency:read"), (req: Req
   return res.json(currency);
 });
 
-router.post("/", authenticate, authorizePermission("currency:create"), auditMiddleware("create", "currency", (req) => req.body.code), (req: Request, res: Response) => {
+router.post("/", authenticate, authorizePermission("currency:create"), auditMiddleware("create", "currency", (req) => req.body.code), async (req: Request, res: Response) => {
   const { code, name, symbol, exchangeRate, isBase } = req.body;
   if (!code || !name) return res.status(400).json({ message: "Code and name are required" });
   if (currencies.find((c) => c.code === code.toUpperCase())) return res.status(409).json({ message: "Currency already exists" });
@@ -135,11 +133,11 @@ router.post("/", authenticate, authorizePermission("currency:create"), auditMidd
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   };
   currencies.push(currency);
-  dbRun("INSERT INTO currencies (id, code, name, symbol, exchangeRate, isBase, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", [currency.id, currency.code, currency.name, currency.symbol, currency.exchangeRate, currency.isBase ? 1 : 0, currency.createdAt, currency.updatedAt]);
+  await dbRun("INSERT INTO currencies (id, code, name, symbol, exchangerate, isbase, createdat, updatedat) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", [currency.id, currency.code, currency.name, currency.symbol, currency.exchangeRate, currency.isBase, currency.createdAt, currency.updatedAt]);
   return res.status(201).json(currency);
 });
 
-router.put("/:id", authenticate, authorizePermission("currency:update"), auditMiddleware("update", "currency"), (req: Request, res: Response) => {
+router.put("/:id", authenticate, authorizePermission("currency:update"), auditMiddleware("update", "currency"), async (req: Request, res: Response) => {
   const currency = currencies.find((c) => c.id === req.params.id);
   if (!currency) return res.status(404).json({ message: "Currency not found" });
   const { code, name, symbol, exchangeRate, isBase } = req.body;
@@ -149,14 +147,14 @@ router.put("/:id", authenticate, authorizePermission("currency:update"), auditMi
   if (exchangeRate !== undefined) currency.exchangeRate = exchangeRate;
   if (isBase !== undefined) currency.isBase = isBase;
   currency.updatedAt = new Date().toISOString();
-  dbRun("UPDATE currencies SET code=?, name=?, symbol=?, exchangeRate=?, isBase=?, updatedAt=? WHERE id=?", [currency.code, currency.name, currency.symbol, currency.exchangeRate, currency.isBase ? 1 : 0, currency.updatedAt, currency.id]);
+  await dbRun("UPDATE currencies SET code=$1, name=$2, symbol=$3, exchangerate=$4, isbase=$5, updatedat=$6 WHERE id=$7", [currency.code, currency.name, currency.symbol, currency.exchangeRate, currency.isBase, currency.updatedAt, currency.id]);
   return res.json(currency);
 });
 
-router.delete("/:id", authenticate, authorizePermission("currency:delete"), auditMiddleware("delete", "currency"), (req: Request, res: Response) => {
+router.delete("/:id", authenticate, authorizePermission("currency:delete"), auditMiddleware("delete", "currency"), async (req: Request, res: Response) => {
   const idx = currencies.findIndex((c) => c.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Currency not found" });
-  dbRun("DELETE FROM currencies WHERE id = ?", [req.params.id]);
+  await dbRun("DELETE FROM currencies WHERE id = $1", [req.params.id]);
   currencies.splice(idx, 1);
   return res.json({ message: "Currency deleted" });
 });

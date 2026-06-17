@@ -20,13 +20,13 @@ const csvColumns: CsvColumn[] = [
 ];
 
 router.get("/", authenticate, authorizePermission("audit:read"), (req: Request, res: Response) => {
-  const pagParams = parsePagination(req.query);
+  const pagParams = { ...parsePagination(req.query), sortBy: (req.query.sortBy as string) || "timestamp" };
   const search = (req.query.search as string) || "";
   const actionFilter = (req.query.action as string) || "";
   const moduleFilter = (req.query.module as string) || "";
   const userIdFilter = (req.query.userId as string) || "";
 
-  let filtered = [...auditLogs].reverse();
+  let filtered = [...auditLogs];
   filtered = filterBySearch(filtered, search, ["userEmail", "action", "module", "resourceId", "details"]);
   if (actionFilter) filtered = filtered.filter((l) => l.action === actionFilter);
   if (moduleFilter) filtered = filtered.filter((l) => l.module === moduleFilter);

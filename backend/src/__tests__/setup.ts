@@ -1,6 +1,7 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { initDb } from "../db";
+import { initDb, truncateTables } from "../db";
 import { seedPermissions, seedRoles, seedAdmin, users, roles, permissions } from "../middleware/auth";
 import { auditLogs } from "../middleware/audit";
 import { currencies, loadCurrenciesFromDb } from "../routes/currencies";
@@ -19,11 +20,12 @@ export async function createApp() {
   auditLogs.length = 0;
   currencies.length = 0;
 
-  // Use fresh in-memory SQLite database for each test run
-  await initDb(":memory:");
-  seedPermissions();
-  seedRoles();
-  loadCurrenciesFromDb();
+  // Connect to PostgreSQL and clear existing data
+  await initDb();
+  await truncateTables();
+  await seedPermissions();
+  await seedRoles();
+  await loadCurrenciesFromDb();
 
   const app = express();
   app.use(cors({ origin: "http://localhost:3000" }));

@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save } from "lucide-react";
 
 interface Permission {
@@ -32,6 +34,8 @@ export default function RoleDetailPage() {
   const [role, setRole] = useState<AppRole | null>(null);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -49,6 +53,8 @@ export default function RoleDetailPage() {
       setRole(roleData);
       setAllPermissions(permsData.data || permsData);
       setSelected(roleData.permissions || []);
+      setName(roleData.name || "");
+      setDescription(roleData.description || "");
     }).finally(() => setLoading(false));
   }, [currentUser, authLoading, router, params.id]);
 
@@ -61,11 +67,15 @@ export default function RoleDetailPage() {
     setSaving(true);
     setSuccess(false);
     const token = localStorage.getItem("token");
-    await fetch(`${API_URL}/roles/${params.id}`, {
+    const res = await fetch(`${API_URL}/roles/${params.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ permissions: selected }),
+      body: JSON.stringify({ name, description, permissions: selected }),
     });
+    if (res.ok) {
+      const updated = await res.json();
+      setRole(updated);
+    }
     setSaving(false);
     setSuccess(true);
     setTimeout(() => setSuccess(false), 2000);
@@ -95,11 +105,29 @@ export default function RoleDetailPage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Permissions ({selected.length}/{allPermissions.length})</CardTitle>
+          <CardTitle className="text-lg">Details</CardTitle>
           {canUpdate && (
             <Button size="sm" onClick={handleSave} disabled={saving}>
               <Save size={14} className="mr-2" />{saving ? "Saving..." : success ? "Saved!" : "Save"}</Button>
           )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rname">Role Name</Label>
+              <Input id="rname" value={name} onChange={(e) => setName(e.target.value)} disabled={!canUpdate} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rdesc">Description</Label>
+              <Input id="rdesc" value={description} onChange={(e) => setDescription(e.target.value)} disabled={!canUpdate} />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Permissions ({selected.length}/{allPermissions.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

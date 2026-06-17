@@ -18,7 +18,7 @@ import {
   FileText,
   Bell,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 interface NavItem {
   label: string;
@@ -44,7 +44,7 @@ const navItems: NavItem[] = [
   { label: "Settings", href: "/dashboard/settings", icon: <Settings size={18} />, roles: ["admin"] },
 ];
 
-const roleBadge: Record<Role, string> = {
+const roleColors: Record<string, string> = {
   admin: "bg-blue-500/20 text-blue-400",
   manager: "bg-green-500/20 text-green-400",
   editor: "bg-yellow-500/20 text-yellow-400",
@@ -52,6 +52,10 @@ const roleBadge: Record<Role, string> = {
   spv: "bg-purple-500/20 text-purple-400",
   finance: "bg-cyan-500/20 text-cyan-400",
 };
+
+function badgeClass(role: string): string {
+  return roleColors[role.toLowerCase()] || "bg-gray-500/20 text-gray-400";
+}
 
 function SidebarLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const isActive = pathname === item.href ||
@@ -92,28 +96,33 @@ function canSeeItem(item: NavItem, userRole: string, userPerms: string[]): boole
 }
 
 export default function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [userPerms, setUserPerms] = useState<string[]>([]);
+  const [localRole, setLocalRole] = useState("");
 
   useEffect(() => {
     if (!user) return;
     setUserPerms(user.permissions || []);
-    const fetchPermissions = async () => {
-      const token = localStorage.getItem("token");
-      try {
-        const res = await fetch("http://localhost:4000/api/auth/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setUserPerms(data.permissions || []);
-        }
-      } catch {}
+    setLocalRole(user.role);
+  }, [user]);
+
+  useEffect(() => {
+    const sync = async () => {
+      await refreshUser();
+      const u = JSON.parse(localStorage.getItem("user") || "null");
+      if (u) {
+        setUserPerms(u.permissions || []);
+        setLocalRole(u.role);
+      }
     };
-    fetchPermissions();
-    const permInterval = setInterval(fetchPermissions, 30000);
+    sync();
+    const id = setInterval(sync, 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
     const fetchCount = async () => {
       const token = localStorage.getItem("token");
       try {
@@ -128,7 +137,7 @@ export default function Sidebar() {
     };
     fetchCount();
     const notifInterval = setInterval(fetchCount, 30000);
-    return () => { clearInterval(permInterval); clearInterval(notifInterval); };
+    return () => { clearInterval(notifInterval); };
   }, [user]);
 
   const itemsWithBadge = navItems.map((item) => {
@@ -138,8 +147,9 @@ export default function Sidebar() {
     return item;
   });
 
-  const visibleItems = itemsWithBadge.filter((item) => user && canSeeItem(item, user.role, userPerms));
-  const visibleMasterData = masterDataItems.filter((item) => user && canSeeItem(item, user.role, userPerms));
+  const displayRole = localRole || user?.role || "";
+  const visibleItems = itemsWithBadge.filter((item) => user && canSeeItem(item, displayRole, userPerms));
+  const visibleMasterData = masterDataItems.filter((item) => user && canSeeItem(item, displayRole, userPerms));
 
   return (
     <aside className="w-60 h-screen flex flex-col bg-card border-r border-border shrink-0">
@@ -175,8 +185,8 @@ export default function Sidebar() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{user.name}</p>
-              <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${roleBadge[user.role as Role] || "bg-gray-500/20 text-gray-400"}`}>
-                {user.role}
+              <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-medium ${badgeClass(displayRole)}`}>
+                {displayRole}
               </span>
             </div>
           </div>
